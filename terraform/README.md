@@ -111,3 +111,52 @@ data "aws_vpc" "existing_vpc" {
 | **Terraform State** | Tracked and managed in state file | Evaluated during run (not managed) |
 | **Destruction** | Deleted during `terraform destroy` | Untouched during `terraform destroy` |
 
+---
+
+## On file suffixes
+
+The file suffix in a Terraform directory **matters configurationally**. Terraform relies on specific extensions to understand the purpose of each file:
+
+---
+
+## 1. The `.tf` Suffix (Configuration Files)
+Files ending in `.tf` contain your **infrastructure code** (resources, data sources, providers, outputs, and variable declarations).
+
+* **Automatic Loading**: Whenever you run a command like `terraform plan` or `terraform apply`, Terraform automatically reads **every** `.tf` file in the current directory and merges them.
+* **Syntax**: These files use HashiCorp Configuration Language (HCL) syntax (e.g., `resource "aws_s3_bucket" "name" {}`).
+
+---
+
+## 2. The `.tfvars` Suffix (Variable Ingestion Files)
+Files ending in `.tfvars` contain **variable values** (data assignments), not infrastructure code. They are used to set values for variables you declared in your `.tf` files.
+
+* **Syntax**: These files are written as key-value pairs:
+  ```hcl
+  # production.tfvars
+  aws_region         = "us-west-2"
+  node_instance_type = "t3.large"
+  node_count         = 5
+  ```
+* **How Terraform Loads Them**:
+  * **Automatically Loaded**: Files named exactly `terraform.tfvars` or ending in `*.auto.tfvars` (e.g., `vpc.auto.tfvars`) are loaded automatically.
+  * **Manually Loaded**: Files with any other name (like `production.tfvars` or `staging.tfvars`) must be passed manually in the CLI using the `-var-file` flag:
+    ```bash
+    terraform apply -var-file="production.tfvars"
+    ```
+
+---
+
+## Other Common Suffixes in Terraform
+
+* **`.tfstate` / `.tfstate.backup`**: JSON files created by Terraform to track the current state of your deployed resources. **Never edit these files manually.**
+* **`.hcl`**: Generic HCL extension. The most common is `.terraform.lock.hcl`, which is generated automatically during `terraform init` to lock provider versions.
+* **`.tf.json` and `.tfvars.json`**: Alternatives to `.tf` and `.tfvars` that allow you to write your configuration or variables in standard JSON syntax if you are generating configurations programmatically.
+
+---
+
+## Summary of Differences
+
+| Suffix | Purpose | Auto-loaded? | Contains |
+| :--- | :--- | :--- | :--- |
+| **`.tf`** | Declares infrastructure & variables | Yes | Resources, Modules, Data, Variables, Outputs |
+| **`.tfvars`** | Assigns values to declared variables | Only `terraform.tfvars` & `*.auto.tfvars` | `variable_name = "value"` |
