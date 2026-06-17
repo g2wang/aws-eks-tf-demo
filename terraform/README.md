@@ -31,3 +31,83 @@ When you run `terraform apply`, Terraform analyzes the dependencies and automati
    - Fluent Bit installs (needs the EKS cluster and the S3 bucket).
    - Elasticsearch installs (needs the EKS cluster).
    - Kibana installs (waits for Elasticsearch to finish provisioning).
+
+---
+
+## On `resource` and `data`
+
+In Terraform, the two most fundamental blocks used to construct configurations are **Resources** and **Data Sources**.
+
+Here is the difference between them, using examples from the project we just set up:
+
+---
+
+## 1. Resources (`resource`) — "The Creators"
+
+A `resource` block defines infrastructure components that Terraform will **create, manage, update, and destroy**.
+
+* **State Tracking**: Terraform manages the lifecycle of resources. It writes details about them to a local or remote state file (`terraform.tfstate`) and modifies or deletes them in AWS when you change your code.
+* **Write Action**: Running `terraform apply` on a resource block results in API requests that provision physical or virtual assets.
+
+### Example from our project:
+In [s3.tf](file:///Users/guangdewang/github/aws-eks-tf-demo/terraform/s3.tf), we created a new S3 bucket to hold logs:
+```hcl
+resource "aws_s3_bucket" "logs" {
+  bucket        = "eks-pod-logs-${random_string.suffix.result}"
+  force_destroy = true
+}
+```
+* **What it does**: When you run `terraform apply`, Terraform talks to the AWS API, provisions a brand-new S3 bucket, and records its details in the state file so it can delete it later during `terraform destroy`.
+
+---
+
+## 2. Data Sources (`data`) — "The Queries"
+
+A `data` block (often called a Data Source) is **read-only**. It is used to **fetch, query, or compute information** from APIs or existing infrastructure *outside* of the current Terraform scope.
+
+* **No Lifecycle Management**: Data sources do not create or delete infrastructure. They simply pull existing information so other resources can use it.
+* **Read Action**: Running `terraform apply` on a data source just retrieves data (e.g., finding the ID of a pre-existing VPC, getting the latest Ubuntu AMI, or generating a policy document).
+
+### Example 1: Querying AWS APIs
+In [iam.tf](file:///Users/guangdewang/github/aws-eks-tf-demo/terraform/iam.tf), we used a data block to dynamically generate a formatted JSON policy structure for the IAM role:
+```hcl
+data "aws_iam_policy_document" "fluent_bit_s3_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["s3:PutObject", "s3:GetObject", "s3:ListBucket"]
+    resources = [
+      aws_s3_bucket.logs.arn,
+      "${aws_s3_bucket.logs.arn}/*"
+    ]
+  }
+}
+```
+* **What it does**: It doesn't create any IAM resource in AWS. It just computes a JSON string locally within Terraform's memory. Later, we assign this computed JSON to an actual policy resource:
+  ```hcl
+  resource "aws_iam_policy" "fluent_bit_s3" {
+    policy = data.aws_iam_policy_document.fluent_bit_s3_policy.json
+  }
+  ```
+
+### Example 2: Accessing Existing Infrastructure
+If you wanted to deploy EKS to a VPC that someone else had already created in your AWS account, instead of writing a `resource "aws_vpc"` block, you would write:
+```hcl
+data "aws_vpc" "existing_vpc" {
+  tags = {
+    Name = "production-vpc"
+  }
+}
+```
+* **What it does**: Terraform queries AWS to locate a VPC named `production-vpc`, gets its CIDR block, subnets, and ID, and allows you to reference it in your EKS code (e.g., `data.aws_vpc.existing_vpc.id`) without attempting to manage or delete it.
+
+---
+
+## Summary Comparison
+
+| Feature | Resource (`resource`) | Data Source (`data`) |
+| :--- | :--- | :--- |
+| **Purpose** | Create and manage infrastructure | Query information / existing state |
+| **AWS API Action** | POST, PUT, DELETE (Write/Modify) | GET (Read-only) |
+| **Terraform State** | Tracked and managed in state file | Evaluated during run (not managed) |
+| **Destruction** | Deleted during `terraform destroy` | Untouched during `terraform destroy` |
+
