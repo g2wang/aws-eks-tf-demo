@@ -160,3 +160,36 @@ Files ending in `.tfvars` contain **variable values** (data assignments), not in
 | :--- | :--- | :--- | :--- |
 | **`.tf`** | Declares infrastructure & variables | Yes | Resources, Modules, Data, Variables, Outputs |
 | **`.tfvars`** | Assigns values to declared variables | Only `terraform.tfvars` & `*.auto.tfvars` | `variable_name = "value"` |
+
+---
+
+## Please explain the `:` in line 8 in the `iam.df` file.
+
+Viewed iam.tf:1-60
+
+In [iam.tf](file:///Users/guangdewang/github/aws-eks-tf-demo/terraform/iam.tf), line 8 contains:
+```hcl
+variable = "${module.eks.oidc_provider}:sub"
+```
+
+The `:` (colon) here is not a Terraform operator or syntax element. Instead, it is a **literal character** inside a string, required by AWS IAM's OpenID Connect (OIDC) condition key format.
+
+### Why AWS IAM requires the `:`
+When you use IAM Roles for Service Accounts (IRSA) with EKS, AWS OIDC federation validates the Kubernetes token. In AWS IAM policy conditions, OIDC claims must be evaluated using condition keys formatted as:
+```text
+<OIDC_PROVIDER_URL>:<CLAIM>
+```
+
+Here is the breakdown of how `${module.eks.oidc_provider}:sub` gets resolved by Terraform and evaluated by AWS:
+
+1. **`${module.eks.oidc_provider}`**: This is interpolated by Terraform into the OIDC provider URL associated with your EKS cluster (without the `https://` prefix).
+   * *Example resolved value:* `oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D741CD`
+2. **`:` (Colon)**: Acts as a hardcoded delimiter separating the OIDC provider URL from the claim name.
+3. **`sub`**: Represents the OpenID Connect **Subject** claim. 
+   - In EKS, the subject identifies which Kubernetes Service Account is requesting the AWS credentials.
+   - It is evaluated against the `values` parameter on line 9: `["system:serviceaccount:kube-system:fluent-bit"]`.
+
+### Summary of claims used in our configuration:
+* **`:sub` (Subject)**: Verifies *who* is trying to assume the role. It restricts access specifically to the service account named `fluent-bit` inside the `kube-system` namespace.
+* **`:aud` (Audience)**: Verifies *where* the token is being sent. For AWS token requests, the audience must be `:aud = sts.amazonaws.com` (as configured on line 14).
+
