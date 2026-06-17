@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: logging
+data:
+  logstash.conf: |
+    input {
+      http {
+        port => 5044
+        codec => json
+      }
+    }
+    filter {
+      # Filter out noise if necessary, or parse JSON payloads
+      if [kubernetes] {
+        mutate {
+          add_field => { "pod_name" => "%{[kubernetes][pod_name]}" }
+          add_field => { "namespace" => "%{[kubernetes][namespace_name]}" }
+          add_field => { "container_name" => "%{[kubernetes][container_name]}" }
+        }
+      }
+    }
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch-master:9200"]
+        index => "eks-logs-%{+YYYY.MM.dd}"
+      }
+      # Also output to stdout for troubleshooting via kubectl logs
+      stdout {
+        codec => rubydebug
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash
+  namespace: logging
+  labels:
+    app: logstash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+        - name: logstash
+          image: docker.elastic.co/logstash/logstash:8.5.1
+          ports:
+            - containerPort: 5044
+              name: http-input
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/share/logstash/pipeline/
+      volumes:
+        - name: config-volume
+          configMap:
+            name: logstash-config
+            items:
+              - key: logstash.conf
+                path: logstash.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash-service
+  namespace: logging
+spec:
+  selector:
+    app: logstash
+  ports:
+    - protocol: TCP
+      port: 5044
+      targetPort: 5044
+  type: ClusterIP
