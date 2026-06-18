@@ -167,7 +167,7 @@ Files ending in `.tfvars` contain **variable values** (data assignments), not in
 
 Viewed iam.tf:1-60
 
-In [iam.tf](file:///Users/guangdewang/github/aws-eks-tf-demo/terraform/iam.tf), line 8 contains:
+In [iam.tf](./iam.tf), line 8 contains:
 ```hcl
 variable = "${module.eks.oidc_provider}:sub"
 ```
